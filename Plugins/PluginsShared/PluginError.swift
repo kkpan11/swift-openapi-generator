@@ -14,7 +14,7 @@
 import PackagePlugin
 import Foundation
 
-enum PluginError: Swift.Error, CustomStringConvertible, LocalizedError {
+enum PluginError: Swift.Error, Equatable, CustomStringConvertible, LocalizedError {
     case incompatibleTarget(name: String)
     case generatorFailure(targetName: String)
     case noTargetsWithExpectedFiles(targetNames: [String])
@@ -37,7 +37,7 @@ enum PluginError: Swift.Error, CustomStringConvertible, LocalizedError {
             let targetNames = targetNames.joined(separator: ", ", lastSeparator: " and ")
             return "Found no targets with names \(targetNames)."
         case .fileErrors(let fileErrors):
-            return "Issues with required files: \(fileErrors.map(\.description).joined(separator: ", and"))."
+            return "Issues with required files:\n\(fileErrors.map { "- " + $0.description }.joined(separator: "\n"))."
         }
     }
 
@@ -55,10 +55,10 @@ enum PluginError: Swift.Error, CustomStringConvertible, LocalizedError {
     }
 }
 
-struct FileError: Swift.Error, CustomStringConvertible, LocalizedError {
+struct FileError: Swift.Error, Equatable, CustomStringConvertible, LocalizedError {
 
     /// The kind of the file.
-    enum Kind: CaseIterable {
+    enum Kind: Equatable, CaseIterable {
         /// Config file.
         case config
         /// OpenAPI document file.
@@ -73,11 +73,11 @@ struct FileError: Swift.Error, CustomStringConvertible, LocalizedError {
     }
 
     /// Encountered issue.
-    enum Issue {
+    enum Issue: Equatable {
         /// File wasn't found.
         case noFilesFound
         /// More than 1 file found.
-        case multipleFilesFound(files: [Path])
+        case multipleFilesFound(files: [URL])
 
         /// The error is definitely due to misconfiguration of a target.
         var isMisconfigurationError: Bool {
@@ -101,7 +101,7 @@ struct FileError: Swift.Error, CustomStringConvertible, LocalizedError {
                     "No config file found in the target named '\(targetName)'. Add a file called 'openapi-generator-config.yaml' or 'openapi-generator-config.yml' to the target's source directory. See documentation for details."
             case .multipleFilesFound(let files):
                 return
-                    "Multiple config files found in the target named '\(targetName)', but exactly one is expected. Found \(files.map(\.description).joined(separator: " "))."
+                    "Multiple config files found in the target named '\(targetName)', but exactly one is expected. Found \(files.map { $0.path(percentEncoded: false) }.joined(separator: " "))."
             }
         case .document:
             switch issue {
@@ -110,7 +110,7 @@ struct FileError: Swift.Error, CustomStringConvertible, LocalizedError {
                     "No OpenAPI document found in the target named '\(targetName)'. Add a file called 'openapi.yaml', 'openapi.yml' or 'openapi.json' (can also be a symlink) to the target's source directory. See documentation for details."
             case .multipleFilesFound(let files):
                 return
-                    "Multiple OpenAPI documents found in the target named '\(targetName)', but exactly one is expected. Found \(files.map(\.description).joined(separator: " "))."
+                    "Multiple OpenAPI documents found in the target named '\(targetName)', but exactly one is expected. Found \(files.map { $0.path(percentEncoded: false) }.joined(separator: " "))."
             }
         }
     }

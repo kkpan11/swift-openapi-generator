@@ -1,6 +1,6 @@
 # Swift OpenAPI Generator
 
-[![](https://img.shields.io/badge/sswg-sandbox-lightgrey.svg)](https://www.swift.org/sswg/)
+[![](https://img.shields.io/badge/sswg-incubating-yellow.svg)](https://www.swift.org/sswg/)
 [![](https://img.shields.io/badge/docc-read_documentation-blue)](https://swiftpackageindex.com/apple/swift-openapi-generator/documentation)
 [![](https://img.shields.io/github/v/release/apple/swift-openapi-generator)](https://github.com/apple/swift-openapi-generator/releases)
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fapple%2Fswift-openapi-generator%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/apple/swift-openapi-generator)
@@ -17,7 +17,7 @@ The code is generated at build-time, so it's always in sync with the OpenAPI doc
 
 ## Features
 
-- Works with OpenAPI Specification versions 3.0 and 3.1.
+- Works with OpenAPI Specification versions 3.0 and 3.1 and has preliminary support for version 3.2.
 - Streaming request and response bodies enabling use cases such as JSON event streams, and large payloads without buffering.
 - Support for JSON, multipart, URL-encoded form, base64, plain text, and raw bytes, represented as value types with type-safe properties.
 - Client, server, and middleware abstractions, decoupling the generated code from the HTTP client library and web framework.
@@ -58,7 +58,7 @@ import OpenAPIVapor
 import Vapor
 
 struct Handler: APIProtocol {
-    func getGreeting(_ input: Operations.getGreeting.Input) async throws -> Operations.getGreeting.Output {
+    func getGreeting(_ input: Operations.GetGreeting.Input) async throws -> Operations.GetGreeting.Output {
         let name = input.query.name ?? "Stranger"
         return .ok(.init(body: .json(.init(message: "Hello, \(name)!"))))
     }
@@ -66,7 +66,7 @@ struct Handler: APIProtocol {
 
 @main struct HelloWorldVaporServer {
     static func main() async throws {
-        let app = Vapor.Application()
+        let app = try await Application.make()
         let transport = VaporTransport(routesBuilder: app)
         let handler = Handler()
         try handler.registerHandlers(on: transport, serverURL: URL(string: "/api")!)
@@ -85,29 +85,30 @@ The Swift OpenAPI Generator project is split across multiple repositories to ena
 | [apple/swift-openapi-runtime][repo-runtime]                | Runtime library used by the generated code         |
 | [apple/swift-openapi-urlsession][repo-urlsession]          | `ClientTransport` using [URLSession][urlsession]   |
 | [swift-server/swift-openapi-async-http-client][repo-ahc]   | `ClientTransport` using [AsyncHTTPClient][ahc]     |
-| [swift-server/swift-openapi-vapor][repo-vapor]             | `ServerTransport` using [Vapor][vapor]             |
-| [swift-server/swift-openapi-hummingbird][repo-hummingbird] | `ServerTransport` using [Hummingbird][hummingbird] |
-| [swift-server/swift-openapi-lambda][repo-lambda]           | `ServerTransport` using [AWS Lambda][lambda]       |
+| [frameo-net/swift-okhttp][repo-swift-okhttp]               | `ClientTransport` using [OkHttp][okhttp]           |
+| [vapor/swift-openapi-vapor][repo-vapor]                    | `ServerTransport` using [Vapor][vapor]             |
+| [hummingbird-project/swift-openapi-hummingbird][repo-hb]   | `ServerTransport` using [Hummingbird][hb]          |
+| [awslabs/swift-openapi-lambda][repo-lambda]                | `ServerTransport` using [AWS Lambda][lambda]       |
 
 ## Requirements and supported features
 
-| Generator versions | Supported OpenAPI versions | Minimum Swift version |
-| ------------------ | -------------------------- | --------------------- |
-| `1.0.0` ... `main` | 3.0, 3.1                   | 5.9                   |
+| Generator versions | Supported OpenAPI versions  |
+| ------------------ | --------------------------- |
+| `1.0.0` ... `main` | 3.0, 3.1, 3.2 (preliminary) |
 
 See also [Supported OpenAPI features][supported-openapi-features].
 
 ### Supported platforms and minimum versions
 
-The generator is used during development and is supported on macOS and Linux.
+The generator is used during development and is supported on macOS, Linux, and Windows.
 
 The generated code, runtime library, and transports are supported on more
 platforms, listed below.
 
-| Component                           | macOS     | Linux | iOS    | tvOS   | watchOS | visionOS |
-| ----------------------------------: | :---      | :---  | :-     | :--    | :-----  | :------  |
-| Generator plugin and CLI            | ✅ 10.15+ | ✅    | ✖️      | ✖️      | ✖️       | ✖️        |
-| Generated code and runtime library  | ✅ 10.15+ | ✅    | ✅ 13+ | ✅ 13+ | ✅ 6+   | ✅ 1+    |
+| Component                           | macOS     | Linux, Windows | iOS    | tvOS   | watchOS | visionOS | Android |
+| ----------------------------------: | :---      | :------------  | :-     | :--    | :-----  | :------  | :------ |
+| Generator plugin and CLI            | ✅ 10.15+ | ✅              | ✖️     | ✖️     | ✖️      | ✖️        | ✖️      |
+| Generated code and runtime library  | ✅ 10.15+ | ✅              | ✅ 13+ | ✅ 13+ | ✅ 6+   | ✅ 1+     | ✅      |
 
 ## Documentation and example projects
 
@@ -131,12 +132,14 @@ Generator](https://developer.apple.com/wwdc23/10171) from WWDC23.
 [urlsession]: https://developer.apple.com/documentation/foundation/urlsession
 [repo-ahc]: https://github.com/swift-server/swift-openapi-async-http-client
 [ahc]: https://github.com/swift-server/async-http-client
-[repo-vapor]: https://github.com/swift-server/swift-openapi-vapor
+[repo-vapor]: https://github.com/vapor/swift-openapi-vapor
 [vapor]: https://github.com/vapor/vapor
-[repo-hummingbird]: https://github.com/swift-server/swift-openapi-hummingbird
-[hummingbird]: https://github.com/hummingbird-project/hummingbird
-[repo-lambda]: https://github.com/swift-server/swift-openapi-lambda
+[repo-hb]: https://github.com/hummingbird-project/swift-openapi-hummingbird
+[hb]: https://github.com/hummingbird-project/hummingbird
+[repo-lambda]: https://github.com/awslabs/swift-openapi-lambda
 [lambda]: https://docs.aws.amazon.com/lambda/latest/dg/welcome.html
+[repo-swift-okhttp]: https://github.com/frameo-net/swift-okhttp
+[okhttp]: https://square.github.io/okhttp/
 [^example-openapi-yaml]: <details><summary>Example OpenAPI document (click to expand)</summary>
 
     ```yaml

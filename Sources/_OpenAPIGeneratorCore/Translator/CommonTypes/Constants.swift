@@ -17,6 +17,16 @@ import OpenAPIKit
 /// in the Runtime library, so they need to be kept in sync.
 enum Constants {
 
+    /// Constants related to the library dependencies.
+    enum Import {
+
+        /// The module name of the OpenAPI runtime library.
+        static let runtime: String = "OpenAPIRuntime"
+
+        /// The module name of the HTTP types library.
+        static let httpTypes: String = "HTTPTypes"
+    }
+
     /// Constants related to the generated Swift files.
     enum File {
 
@@ -25,7 +35,7 @@ enum Constants {
 
         /// The descriptions of modules imported by every generated file.
         static let imports: [ImportDescription] = [
-            ImportDescription(moduleName: "OpenAPIRuntime", spi: "Generated"),
+            ImportDescription(moduleName: Constants.Import.runtime, spi: "Generated"),
             ImportDescription(
                 moduleName: "Foundation",
                 moduleTypes: ["struct Foundation.URL", "struct Foundation.Data", "struct Foundation.Date"],
@@ -34,7 +44,8 @@ enum Constants {
         ]
 
         /// The descriptions of modules imported by client and server files.
-        static let clientServerImports: [ImportDescription] = imports + [ImportDescription(moduleName: "HTTPTypes")]
+        static let clientServerImports: [ImportDescription] =
+            imports + [ImportDescription(moduleName: Constants.Import.httpTypes, setsAccessModifier: false)]
     }
 
     /// Constants related to the OpenAPI server object.
@@ -45,6 +56,18 @@ enum Constants {
 
         /// The prefix of each generated method name.
         static let propertyPrefix: String = "server"
+        /// The name of each generated static function.
+        static let urlStaticFunc: String = "url"
+
+        /// The prefix of the namespace that contains server specific variables.
+        static let serverNamespacePrefix: String = "Server"
+
+        /// Constants related to the OpenAPI server variable object.
+        enum Variable {
+
+            /// The types that the protocol conforms to.
+            static let conformances: [String] = [TypeName.string.fullyQualifiedSwiftName, "Sendable"]
+        }
     }
 
     /// Constants related to the configuration type, which is used by both
@@ -296,6 +319,8 @@ enum Constants {
 
                 /// The form style.
                 static let form = "form"
+                /// The deepObject style.
+                static let deepObject = "deepObject"
             }
         }
 
@@ -349,7 +374,6 @@ enum Constants {
         /// The substring used in method names for the multipart coding strategy.
         static let multipart: String = "Multipart"
     }
-
     /// Constants related to types used in many components.
     enum Global {
 

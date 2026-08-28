@@ -89,10 +89,9 @@ final class StringCodeWriter {
 /// to convert the provided structure code into raw string form.
 struct TextBasedRenderer: RendererProtocol {
 
-    func render(structured: StructuredSwiftRepresentation, config: Config, diagnostics: any DiagnosticCollector) throws
+    func render(namedFile: NamedFileDescription, config: Config, diagnostics: any DiagnosticCollector) throws
         -> InMemoryOutputFile
     {
-        let namedFile = structured.file
         renderFile(namedFile.contents)
         let string = writer.rendered()
         return InMemoryOutputFile(baseName: namedFile.name, contents: Data(string.utf8))
@@ -149,13 +148,21 @@ struct TextBasedRenderer: RendererProtocol {
 
     /// Renders a single import statement.
     func renderImport(_ description: ImportDescription) {
+        let accessModifierPrefix: String
+        switch description.accessModifier {
+        case .public: accessModifierPrefix = renderedAccessModifier(.public) + " "
+        case .package: accessModifierPrefix = renderedAccessModifier(.package) + " "
+        default: accessModifierPrefix = ""
+        }
+
         func render(preconcurrency: Bool) {
             let spiPrefix = description.spi.map { "@_spi(\($0)) " } ?? ""
             let preconcurrencyPrefix = preconcurrency ? "@preconcurrency " : ""
+            let attributePrefix = "\(preconcurrencyPrefix)\(spiPrefix)"
             if let moduleTypes = description.moduleTypes {
-                for type in moduleTypes { writer.writeLine("\(preconcurrencyPrefix)\(spiPrefix)import \(type)") }
+                for type in moduleTypes { writer.writeLine("\(attributePrefix)\(accessModifierPrefix)import \(type)") }
             } else {
-                writer.writeLine("\(preconcurrencyPrefix)\(spiPrefix)import \(description.moduleName)")
+                writer.writeLine("\(attributePrefix)\(accessModifierPrefix)import \(description.moduleName)")
             }
         }
 
@@ -446,9 +453,17 @@ struct TextBasedRenderer: RendererProtocol {
         func write(_ string: String) { writer.writeLine(string) }
         switch literal {
         case let .string(string):
-            // Use a raw literal if the string contains a quote/backslash.
+            // Use a raw literal if the string contains a quote or backslash.
+            // Pick the minimum number of `#` delimiters so that neither the
+            // closing delimiter (`"` + N×`#`) nor the escape prefix
+            // (`\` + N×`#`) appears in the string content.
             if string.contains("\"") || string.contains("\\") {
-                write("#\"\(string)\"#")
+                var hashCount = 1
+                while string.contains("\"" + String(repeating: "#", count: hashCount))
+                    || string.contains("\\" + String(repeating: "#", count: hashCount))
+                { hashCount += 1 }
+                let hashes = String(repeating: "#", count: hashCount)
+                write("\(hashes)\"\(string)\"\(hashes)")
             } else {
                 write("\"\(string)\"")
             }

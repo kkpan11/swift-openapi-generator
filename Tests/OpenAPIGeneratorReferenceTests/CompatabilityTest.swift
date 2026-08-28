@@ -88,7 +88,7 @@ final class CompatibilityTest: XCTestCase {
             "https://raw.githubusercontent.com/discourse/discourse_api_docs/8182f1b21ca62cc9ac85fd3a82cae8304033a672/openapi.yml",
             license: .apache,
             expectedDiagnostics: [
-                "Validation warning: Inconsistency encountered when parsing `OpenAPI Schema`: Found nothing but unsupported attributes..",
+                "Validation warning: Problem encountered when parsing `OpenAPI Schema`: Found nothing but unsupported attributes..",
                 "Multipart request bodies must always be required, but found an optional one - skipping. Mark as `required: true` to get this body generated.",
             ],
             skipBuild: compatibilityTestSkipBuild
@@ -100,15 +100,15 @@ final class CompatibilityTest: XCTestCase {
             "https://raw.githubusercontent.com/github/rest-api-description/322663c9c909974af16363b4dc0873c428bdbe34/descriptions-next/api.github.com/api.github.com.yaml",
             license: .mit,
             expectedDiagnostics: [
-                "Validation warning: Inconsistency encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: array. Specifically, attributes for these other types: [\"object\"].",
-                "Validation warning: Inconsistency encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"object\"].",
-                "Validation warning: Inconsistency encountered when parsing `OpenAPI Schema`: Found nothing but unsupported attributes..",
-                "Schema warning: Inconsistency encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"array\"].",
-                "Validation warning: Inconsistency encountered when parsing `Schema`: A schema contains properties for multiple types of schemas, namely: [\"array\", \"object\"]..",
-                "Validation warning: Inconsistency encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"array\"].",
+                "Validation warning: Problem encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: array. Specifically, attributes for these other types: [\"object\"].",
+                "Validation warning: Problem encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"object\"].",
+                "Validation warning: Problem encountered when parsing `OpenAPI Schema`: Found nothing but unsupported attributes..",
+                "Schema warning: Problem encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"array\"].",
+                "Validation warning: Problem encountered when parsing `Schema`: A schema contains properties for multiple types of schemas, namely: [\"array\", \"object\"]..",
+                "Validation warning: Problem encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"array\"].",
                 "A property name only appears in the required list, but not in the properties map - this is likely a typo; skipping this property.",
-                "Schema warning: Inconsistency encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: array. Specifically, attributes for these other types: [\"object\"].",
-                "Schema warning: Inconsistency encountered when parsing `Schema`: A schema contains properties for multiple types of schemas, namely: [\"array\", \"object\"]..",
+                "Schema warning: Problem encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: array. Specifically, attributes for these other types: [\"object\"].",
+                "Schema warning: Problem encountered when parsing `Schema`: A schema contains properties for multiple types of schemas, namely: [\"array\", \"object\"]..",
                 "Schema \"null\" is not supported, reason: \"schema type\", skipping",
             ],
             skipBuild: true
@@ -121,11 +121,11 @@ final class CompatibilityTest: XCTestCase {
             license: .mit,
             expectedDiagnostics: [
                 "Multipart request bodies must always be required, but found an optional one - skipping. Mark as `required: true` to get this body generated.",
-                "Validation warning: Inconsistency encountered when parsing `OpenAPI Schema`: Found nothing but unsupported attributes..",
-                "Validation warning: Inconsistency encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"array\"].",
+                "Validation warning: Problem encountered when parsing `OpenAPI Schema`: Found nothing but unsupported attributes..",
+                "Validation warning: Problem encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"array\"].",
                 "A property name only appears in the required list, but not in the properties map - this is likely a typo; skipping this property.",
-                "Validation warning: Inconsistency encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"object\"].",
-                "Schema warning: Inconsistency encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"array\"].",
+                "Validation warning: Problem encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"object\"].",
+                "Schema warning: Problem encountered when parsing `OpenAPI Schema`: Found schema attributes not consistent with the type specified: string. Specifically, attributes for these other types: [\"array\"].",
                 "Schema \"null\" is not supported, reason: \"schema type\", skipping",
             ],
             skipBuild: true
@@ -248,31 +248,31 @@ fileprivate extension CompatibilityTest {
         // Run the generator.
         log("Generating Swift code (document size: \(documentSize))")
         let input = InMemoryInputFile(absolutePath: URL(string: "openapi.yaml")!, contents: documentData)
-        let outputs: [GeneratorPipeline.RenderedOutput]
+        let outputs: [InMemoryOutputFile]
         if compatibilityTestParallelCodegen {
             outputs = try await withThrowingTaskGroup(of: GeneratorPipeline.RenderedOutput.self) { group in
                 for mode in GeneratorMode.allCases {
                     group.addTask {
                         let generator = makeGeneratorPipeline(
-                            config: Config(mode: mode, access: .public),
+                            config: Config(mode: mode, access: .public, namingStrategy: .defensive),
                             diagnostics: diagnosticsCollector
                         )
                         return try assertNoThrowWithValue(generator.run(input))
                     }
                 }
-                return try await group.reduce(into: []) { $0.append($1) }
+                return try await group.reduce(into: []) { $0.append(contentsOf: $1) }
             }
         } else {
-            outputs = try GeneratorMode.allCases.map { mode in
+            outputs = try GeneratorMode.allCases.flatMap { mode in
                 let generator = makeGeneratorPipeline(
-                    config: Config(mode: mode, access: .public),
+                    config: Config(mode: mode, access: .public, namingStrategy: .defensive),
                     diagnostics: diagnosticsCollector
                 )
                 return try assertNoThrowWithValue(generator.run(input))
             }
         }
         XCTAssertEqual(Set(diagnosticsCollector.diagnostics.map(\.message)), expectedDiagnostics)
-        XCTAssertEqual(outputs.count, 3)
+        XCTAssertEqual(outputs.count, GeneratorMode.allOutputFileNames.count)
 
         if !skipBuild {
             // Create Swift package test harness.
@@ -287,12 +287,12 @@ fileprivate extension CompatibilityTest {
             XCTAssertNoThrow(try FileManager.default.createDirectory(at: packageDir, withIntermediateDirectories: true))
             let packageSwiftPath = packageDir.appendingPathComponent("Package.swift", isDirectory: false)
             let packageSwiftContents = """
-                // swift-tools-version:5.9
+                // swift-tools-version:6.0
                 import PackageDescription
                 let package = Package(
                     name: "\(packageName)",
                     platforms: [.macOS(.v13)],
-                    dependencies: [.package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.0.0")],
+                    dependencies: [.package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.7.0")],
                     targets: [.target(name: "Harness", dependencies: [.product(name: "OpenAPIRuntime", package: "swift-openapi-runtime")])]
                 )
                 """
@@ -314,10 +314,9 @@ fileprivate extension CompatibilityTest {
 
             // Build the package.
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.executableURL = try resolveExecutable("swift")
             process.arguments = [
-                "swift", "build", "--package-path", packageDir.path, "-Xswiftc", "-Xllvm", "-Xswiftc",
-                "-vectorize-slp=false",
+                "build", "--package-path", packageDir.path, "-Xswiftc", "-Xllvm", "-Xswiftc", "-vectorize-slp=false",
             ]
             if let numBuildJobs = compatibilityTestNumBuildJobs {
                 process.arguments!.append(contentsOf: ["-j", String(numBuildJobs)])
@@ -358,14 +357,12 @@ fileprivate extension CompatibilityTest {
     func log(_ message: String) { print("\(name) \(message)") }
 
     var testCaseName: String {
-        /// The `name` property is `<test-suite-name>.<test-case-name>` on Linux,
-        /// and `-[<test-suite-name> <test-case-name>]` on macOS.
+        /// The `name` property is `-[<test-suite-name> <test-case-name>]` on Apple platforms (e.g. with an Objective-C runtime),
+        /// and `<test-suite-name>.<test-case-name>` elsewhere.
         #if canImport(Darwin)
         return String(name.split(separator: " ", maxSplits: 2).last!.dropLast())
-        #elseif os(Linux)
-        return String(name.split(separator: ".", maxSplits: 2).last!)
         #else
-        #error("Platform not supported")
+        return String(name.split(separator: ".", maxSplits: 2).last!)
         #endif
     }
 }
@@ -417,7 +414,7 @@ fileprivate extension URLSession {
     func data(from url: URL) async throws -> (Data, URLResponse) {
         #if canImport(Darwin)
         return try await data(from: url, delegate: nil)
-        #elseif os(Linux)
+        #else
         return try await withCheckedThrowingContinuation { continuation in
             dataTask(with: URLRequest(url: url)) { data, response, error in
                 if let error {
@@ -432,8 +429,6 @@ fileprivate extension URLSession {
             }
             .resume()
         }
-        #else
-        #error("Platform not supported")
         #endif
     }
 }

@@ -32,15 +32,14 @@ struct TypedResponseHeader {
     /// The coding strategy appropriate for this parameter.
     var codingStrategy: CodingStrategy
 
-    /// A converted function from user-provided strings to strings
-    /// safe to be used as a Swift identifier.
-    var asSwiftSafeName: (String) -> String
+    /// A set of configuration values that inform translation.
+    var context: TranslatorContext
 }
 
 extension TypedResponseHeader {
 
     /// The name of the header sanitized to be a valid Swift identifier.
-    var variableName: String { asSwiftSafeName(name) }
+    var variableName: String { context.safeNameGenerator.swiftMemberName(for: name) }
 
     /// A Boolean value that indicates whether the response header can
     /// be omitted in the HTTP response.
@@ -106,7 +105,7 @@ extension FileTranslator {
         // Collect the header
         let header: OpenAPI.Header
         switch unresolvedResponseHeader {
-        case let .a(ref): header = try components.lookup(ref)
+        case let .a(ref): header = try components.assumeLookupOnce(ref)
         case let .b(_header): header = _header
         }
 
@@ -133,12 +132,16 @@ extension FileTranslator {
         switch unresolvedResponseHeader {
         case let .a(ref): type = try typeAssigner.typeName(for: ref).asUsage
         case .b:
-            switch schema {
-            case let .a(reference): type = try typeAssigner.typeName(for: reference).asUsage
-            case let .b(schema):
+            // we want to look under both OpenAPI.Reference and
+            // JSONSchema.reference so we flatten the value before inspecting
+            // it:
+            let unboxedSchema = schema.flattenToJsonSchema()
+            switch unboxedSchema.value {
+            case let .reference(reference, _): type = try typeAssigner.typeName(for: reference).asUsage
+            default:
                 type = try typeAssigner.typeUsage(
                     forParameterNamed: name,
-                    withSchema: schema,
+                    withSchema: unboxedSchema,
                     components: components,
                     inParent: parent
                 )
@@ -152,7 +155,7 @@ extension FileTranslator {
             schema: schema,
             typeUsage: usage,
             codingStrategy: codingStrategy,
-            asSwiftSafeName: swiftSafeName
+            context: context
         )
     }
 }

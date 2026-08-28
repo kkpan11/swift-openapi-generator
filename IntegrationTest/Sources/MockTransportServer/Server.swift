@@ -17,16 +17,16 @@ import OpenAPIRuntime
 import HTTPTypes
 
 actor SimpleAPIImpl: APIProtocol {
-    func getGreeting(_ input: Operations.getGreeting.Input) async throws -> Operations.getGreeting.Output {
+    func getGreeting(_ input: Operations.GetGreeting.Input) async throws -> Operations.GetGreeting.Output {
         let message = "Hello, \(input.query.name ?? "Stranger")!"
         return .ok(.init(body: .json(.init(message: message))))
     }
 }
 
 class MockServerTransport: ServerTransport {
-    typealias Handler = @Sendable (
-        HTTPTypes.HTTPRequest, OpenAPIRuntime.HTTPBody?, OpenAPIRuntime.ServerRequestMetadata
-    ) async throws -> (HTTPTypes.HTTPResponse, OpenAPIRuntime.HTTPBody?)
+    typealias Handler =
+        @Sendable (HTTPTypes.HTTPRequest, OpenAPIRuntime.HTTPBody?, OpenAPIRuntime.ServerRequestMetadata) async throws
+        -> (HTTPTypes.HTTPResponse, OpenAPIRuntime.HTTPBody?)
 
     func register(_ handler: @escaping Handler, method: HTTPTypes.HTTPRequest.Method, path: String) throws {
         // noop.
@@ -36,5 +36,5 @@ class MockServerTransport: ServerTransport {
 func initializeServer() throws {
     let handler = SimpleAPIImpl()
     let transport = MockServerTransport()
-    try handler.registerHandlers(on: transport, serverURL: Servers.server1())
+    try handler.registerHandlers(on: transport, serverURL: Servers.Server1.url())
 }

@@ -30,16 +30,11 @@ struct ServerFileTranslator: FileTranslator {
 
         let doc = parsedOpenAPI
 
-        let topComment: Comment = .inline(Constants.File.topComment)
+        let topComment = self.topComment
 
-        let imports =
-            Constants.File.clientServerImports + config.additionalImports.map { ImportDescription(moduleName: $0) }
+        let imports = importDescriptions(adding: Constants.File.clientServerImports)
 
-        let allOperations = try OperationDescription.all(
-            from: doc.paths,
-            in: components,
-            asSwiftSafeName: swiftSafeName
-        )
+        let allOperations = try OperationDescription.all(from: doc.paths, in: components, context: context)
 
         let (registerHandlersDecl, serverMethodDecls) = try translateRegisterHandlers(allOperations)
 
@@ -58,16 +53,16 @@ struct ServerFileTranslator: FileTranslator {
             declarations: serverMethodDecls
         )
 
-        return StructuredSwiftRepresentation(
-            file: .init(
-                name: GeneratorMode.server.outputFileName,
+        return StructuredSwiftRepresentation(files: [
+            .init(
+                name: GeneratorMode.server.outputFileName.rawValue,
                 contents: .init(
                     topComment: topComment,
                     imports: imports,
                     codeBlocks: [.declaration(protocolExtensionDecl), .declaration(serverExtensionDecl)]
                 )
             )
-        )
+        ])
     }
 
     /// Returns a declaration of the registerHandlers method and

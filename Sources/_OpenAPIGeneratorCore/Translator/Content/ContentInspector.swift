@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import OpenAPIKit
+import Foundation
 
 /// Utilities for asking questions about OpenAPI.Content
 extension FileTranslator {
@@ -96,7 +97,7 @@ extension FileTranslator {
         return try contents.compactMap { key, value in
             try parseContentIfSupported(
                 contentKey: key,
-                contentValue: value,
+                contentValue: try components.assumeLookupOnce(value),
                 excludeBinary: excludeBinary,
                 isRequired: isRequired,
                 foundIn: foundIn + "/\(key.rawValue)"
@@ -123,21 +124,26 @@ extension FileTranslator {
         -> SchemaContent?
     {
         guard !map.isEmpty else { return nil }
-        if map.count > 1 { diagnostics.emitUnsupported("Multiple content types", foundIn: foundIn) }
+        if map.count > 1 { try diagnostics.emitUnsupported("Multiple content types", foundIn: foundIn) }
         let mapWithContentTypes = try map.map { key, content in try (type: key.asGeneratorContentType, value: content) }
 
         let chosenContent: (type: ContentType, schema: SchemaContent, content: OpenAPI.Content)?
         if let (contentType, contentValue) = mapWithContentTypes.first(where: { $0.type.isJSON }) {
-            chosenContent = (contentType, .init(contentType: contentType, schema: contentValue.schema), contentValue)
+            let contentValue = try components.assumeLookupOnce(contentValue)
+            chosenContent = (
+                contentType, .init(contentType: contentType, schema: contentValue.schema.map(Either.schema)),
+                contentValue
+            )
         } else if !excludeBinary,
             let (contentType, contentValue) = mapWithContentTypes.first(where: { $0.type.isBinary })
         {
+            let contentValue = try components.assumeLookupOnce(contentValue)
             chosenContent = (
-                contentType, .init(contentType: contentType, schema: .b(.string(contentEncoding: .binary))),
+                contentType, .init(contentType: contentType, schema: .schema(.string(contentEncoding: .binary))),
                 contentValue
             )
         } else {
-            diagnostics.emitUnsupported("Unsupported content", foundIn: foundIn)
+            try diagnostics.emitUnsupported("Unsupported content", foundIn: foundIn)
             chosenContent = nil
         }
         if let chosenContent {
@@ -145,7 +151,7 @@ extension FileTranslator {
             if contentType.lowercasedType == "multipart"
                 || contentType.lowercasedTypeAndSubtype.contains("application/x-www-form-urlencoded")
             {
-                diagnostics.emitUnsupportedIfNotNil(
+                try diagnostics.emitUnsupportedIfNotNil(
                     chosenContent.content.encoding,
                     "Custom encoding for multipart/formEncoded content",
                     foundIn: "\(foundIn), content \(contentType.originallyCasedTypeAndSubtype)"
@@ -181,17 +187,19 @@ extension FileTranslator {
     ) throws -> SchemaContent? {
         let contentType = try contentKey.asGeneratorContentType
         if contentType.lowercasedTypeAndSubtype.contains("application/x-www-form-urlencoded") {
-            diagnostics.emitUnsupportedIfNotNil(
+            try diagnostics.emitUnsupportedIfNotNil(
                 contentValue.encoding,
                 "Custom encoding for formEncoded content",
                 foundIn: "\(foundIn), content \(contentType.originallyCasedTypeAndSubtype)"
             )
         }
-        if contentType.isJSON { return .init(contentType: contentType, schema: contentValue.schema) }
-        if contentType.isUrlEncodedForm { return .init(contentType: contentType, schema: contentValue.schema) }
+        if contentType.isJSON { return .init(contentType: contentType, schema: contentValue.schema.map(Either.schema)) }
+        if contentType.isUrlEncodedForm {
+            return .init(contentType: contentType, schema: contentValue.schema.map(Either.schema))
+        }
         if contentType.isMultipart {
             guard isRequired else {
-                diagnostics.emit(
+                try diagnostics.emit(
                     .warning(
                         message:
                             "Multipart request bodies must always be required, but found an optional one - skipping. Mark as `required: true` to get this body generated.",
@@ -200,12 +208,16 @@ extension FileTranslator {
                 )
                 return nil
             }
-            return .init(contentType: contentType, schema: contentValue.schema, encoding: contentValue.encoding)
+            return .init(
+                contentType: contentType,
+                schema: contentValue.schema.map(Either.schema),
+                encoding: contentValue.encodingMap
+            )
         }
         if !excludeBinary, contentType.isBinary {
-            return .init(contentType: contentType, schema: .b(.string(contentEncoding: .binary)))
+            return .init(contentType: contentType, schema: .schema(.string(contentEncoding: .binary)))
         }
-        diagnostics.emitUnsupported("Unsupported content", foundIn: foundIn)
+        try diagnostics.emitUnsupported("Unsupported content", foundIn: foundIn)
         return nil
     }
 }

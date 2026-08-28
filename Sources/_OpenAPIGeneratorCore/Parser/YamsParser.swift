@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import Foundation
-import OpenAPIKit
+public import OpenAPIKit
 import OpenAPIKit30
 import OpenAPIKitCompat
 import Yams
@@ -70,10 +70,12 @@ public struct YamsParser: ParserProtocol {
         do {
             let document: OpenAPIKit.OpenAPI.Document
             switch openAPIVersion {
-            case "3.0.0", "3.0.1", "3.0.2", "3.0.3":
+            case "3.0.0", "3.0.1", "3.0.2", "3.0.3", "3.0.4":
                 let openAPI30Document = try decoder.decode(OpenAPIKit30.OpenAPI.Document.self, from: input.contents)
                 document = openAPI30Document.convert(to: .v3_1_0)
-            case "3.1.0": document = try decoder.decode(OpenAPIKit.OpenAPI.Document.self, from: input.contents)
+            case "3.1.0", "3.1.1", "3.1.2":
+                document = try decoder.decode(OpenAPIKit.OpenAPI.Document.self, from: input.contents)
+            case "3.2.0": document = try decoder.decode(OpenAPIKit.OpenAPI.Document.self, from: input.contents)
             default:
                 throw Diagnostic.openAPIVersionError(
                     versionString: "openapi: \(openAPIVersion)",
@@ -128,7 +130,7 @@ extension Diagnostic {
     static func openAPIVersionError(versionString: String, location: Location) -> Diagnostic {
         error(
             message:
-                "Unsupported document version: \(versionString). Please provide a document with OpenAPI versions in the 3.0.x or 3.1.x sets.",
+                "Unsupported document version: \(versionString). Please provide a document with OpenAPI versions in the 3.0.x, 3.1.x, or 3.2.x sets.",
             location: location
         )
     }
@@ -139,7 +141,7 @@ extension Diagnostic {
     static func openAPIMissingVersionError(location: Location) -> Diagnostic {
         error(
             message:
-                "No openapi key found, please provide a valid OpenAPI document with OpenAPI versions in the 3.0.x or 3.1.x sets.",
+                "No key named openapi found. Please provide a valid OpenAPI document with OpenAPI versions in the 3.0.x, 3.1.x, or 3.2.x sets.",
             location: location
         )
     }

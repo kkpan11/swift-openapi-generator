@@ -30,45 +30,51 @@ extension _GenerateOptions {
     func runGenerator(outputDirectory: URL, pluginSource: PluginSource?, isDryRun: Bool) async throws {
         let config = try loadedConfig()
         let sortedModes = try resolvedModes(config)
-        let resolvedAccessModifier = resolvedAccessModifier(config) ?? Config.defaultAccessModifier
+        let resolvedAccessModifier = resolvedAccessModifier(config)
         let resolvedAdditionalImports = resolvedAdditionalImports(config)
+        let resolvedAdditionalFileComments = resolvedAdditionalFileComments(config)
+        let resolvedNamingStragy = resolvedNamingStrategy(config)
+        let resolvedNameOverrides = resolvedNameOverrides(config)
+        let resolvedTypeOverrides = resolvedTypeOverrides(config)
         let resolvedFeatureFlags = resolvedFeatureFlags(config)
         let configs: [Config] = sortedModes.map {
             .init(
                 mode: $0,
                 access: resolvedAccessModifier,
                 additionalImports: resolvedAdditionalImports,
+                additionalFileComments: resolvedAdditionalFileComments,
                 filter: config?.filter,
+                namingStrategy: resolvedNamingStragy,
+                nameOverrides: resolvedNameOverrides,
+                typeOverrides: resolvedTypeOverrides,
                 featureFlags: resolvedFeatureFlags
             )
         }
-        let diagnostics: any DiagnosticCollector & Sendable
-        let finalizeDiagnostics: () throws -> Void
-        if let diagnosticsOutputPath {
-            let _diagnostics = _YamlFileDiagnosticsCollector(url: diagnosticsOutputPath)
-            finalizeDiagnostics = _diagnostics.finalize
-            diagnostics = _diagnostics
-        } else {
-            diagnostics = StdErrPrintingDiagnosticCollector()
-            finalizeDiagnostics = {}
-        }
-
+        let (diagnostics, finalizeDiagnostics) = preparedDiagnosticsCollector(outputPath: diagnosticsOutputPath)
         let doc = self.docPath
-        print(
+        FileHandle.standardError.write(
             """
             Swift OpenAPI Generator is running with the following configuration:
             - OpenAPI document path: \(doc.path)
             - Configuration path: \(self.config?.path ?? "<none>")
             - Generator modes: \(sortedModes.map(\.rawValue).joined(separator: ", "))
             - Access modifier: \(resolvedAccessModifier.rawValue)
+            - Naming strategy: \(resolvedNamingStragy.rawValue)
+            - Name overrides: \(resolvedNameOverrides.isEmpty ? "<none>" : resolvedNameOverrides
+                .sorted(by: { $0.key < $1.key })
+                .map { "\"\($0.key)\"->\"\($0.value)\"" }.joined(separator: ", "))
+            - Type overrides: \(resolvedTypeOverrides.schemas.isEmpty ? "<none>" : resolvedTypeOverrides.schemas
+                .sorted(by: { $0.key < $1.key })
+                .map { "\"\($0.key)\"->\"\($0.value)\"" }.joined(separator: ", "))
             - Feature flags: \(resolvedFeatureFlags.isEmpty ? "<none>" : resolvedFeatureFlags.map(\.rawValue).joined(separator: ", "))
-            - Output file names: \(sortedModes.map(\.outputFileName).joined(separator: ", "))
+            - Output file names: \(sortedModes.flatMap { mode in OutputFileName.allCases.filter { mode.outputFileNames.contains($0) } }.map(\.rawValue).joined(separator: ", "))
             - Output directory: \(outputDirectory.path)
             - Diagnostics output path: \(diagnosticsOutputPath?.path ?? "<none - logs to stderr>")
             - Current directory: \(FileManager.default.currentDirectoryPath)
             - Plugin source: \(pluginSource?.rawValue ?? "<none>")
             - Is dry run: \(isDryRun)
             - Additional imports: \(resolvedAdditionalImports.isEmpty ? "<none>" : resolvedAdditionalImports.joined(separator: ", "))
+            - Additional file comments: \(resolvedAdditionalFileComments.isEmpty ? "<none>" : resolvedAdditionalFileComments.joined(separator: ", "))
             """
         )
         do {
@@ -83,7 +89,7 @@ extension _GenerateOptions {
             try finalizeDiagnostics()
         } catch let error as Diagnostic {
             // Emit our nice Diagnostics message instead of relying on ArgumentParser output.
-            diagnostics.emit(error)
+            try diagnostics.emit(error)
             try finalizeDiagnostics()
             throw ExitCode.failure
         } catch {

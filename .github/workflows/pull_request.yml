@@ -1,12 +1,128 @@
-name: Pull Request
+name: PR
+
+permissions:
+  contents: read
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
- 
+   types: [opened, reopened, synchronize]
+
 jobs:
-  call-reusable-pull-request-workflow:
-    name: Checks
-    uses: apple/swift-nio/.github/workflows/reusable_pull_request.yml@main
+  soundness:
+    name: Soundness
+    uses: swiftlang/github-workflows/.github/workflows/soundness.yml@0.0.15
     with:
-      benchmarks_linux_enabled: false
+      api_breakage_check_enabled: false
+      license_header_check_project_name: "SwiftOpenAPIGenerator"
+      yamllint_check_enabled: false
+
+  unit-tests:
+    name: Unit tests
+    uses: apple/swift-nio/.github/workflows/unit_tests.yml@main
+    with:
+      linux_6_1_arguments_override: "--explicit-target-dependency-import-check error"
+      linux_6_2_arguments_override: "--explicit-target-dependency-import-check error"
+      linux_6_3_arguments_override: "--explicit-target-dependency-import-check error"
+      linux_nightly_next_arguments_override: "--explicit-target-dependency-import-check error"
+      linux_nightly_main_arguments_override: "--explicit-target-dependency-import-check error"
+      windows_6_1_enabled: true
+      windows_6_2_enabled: true
+      windows_6_3_enabled: true
+      windows_nightly_next_enabled: true
+      windows_nightly_main_enabled: true
+      windows_6_1_arguments_override: "--explicit-target-dependency-import-check error"
+      windows_6_2_arguments_override: "--explicit-target-dependency-import-check error"
+      windows_6_3_arguments_override: "--explicit-target-dependency-import-check error"
+      windows_nightly_next_arguments_override: "--explicit-target-dependency-import-check error"
+      windows_nightly_main_arguments_override: "--explicit-target-dependency-import-check error"
+
+  compatibility-test:
+    name: Compatibility test
+    runs-on: ubuntu-latest
+    container:
+      image: swift:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Run OpenAPI document compatibilty test
+        env:
+          SWIFT_OPENAPI_COMPATIBILITY_TEST_ENABLE: "true"
+          SWIFT_OPENAPI_COMPATIBILITY_TEST_SKIP_BUILD: "true"
+          SWIFT_OPENAPI_COMPATIBILITY_TEST_FILTER: OpenAPIGeneratorReferenceTests.CompatibilityTest
+          SWIFT_OPENAPI_COMPATIBILITY_TEST_PARALLEL_CODEGEN: "true"
+          SWIFT_OPENAPI_COMPATIBILITY_TEST_NUM_BUILD_JOBS: 1
+        run: swift test --filter ${SWIFT_OPENAPI_COMPATIBILITY_TEST_FILTER}
+
+  construct-integration-test-matrix:
+    name: Construct integration matrix
+    runs-on: ubuntu-latest
+    outputs:
+      integration-test-matrix: '${{ steps.generate-matrix.outputs.integration-test-matrix }}'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: generate-matrix
+        run: echo "integration-test-matrix=$(curl -s https://raw.githubusercontent.com/apple/swift-nio/main/scripts/generate_matrix.sh | bash)" >> "$GITHUB_OUTPUT"
+        env:
+          MATRIX_LINUX_SETUP_COMMAND: apt-get update -y && apt-get install -yq jq && git config --global --add safe.directory /swift-openapi-generator/.git && git config --global --add safe.directory /swift-openapi-generator
+          MATRIX_LINUX_COMMAND: SWIFT_OPENAPI_GENERATOR_REPO_URL=file://${workspace} ./scripts/run-integration-test.sh
+          MATRIX_LINUX_NIGHTLY_MAIN_ENABLED: false
+
+  integration-test:
+    name: Integration test
+    needs: construct-integration-test-matrix
+    uses: apple/swift-nio/.github/workflows/swift_test_matrix.yml@main
+    with:
+      name: "Integration test"
+      matrix_string: '${{ needs.construct-integration-test-matrix.outputs.integration-test-matrix }}'
+
+  construct-example-packages-matrix:
+    name: Construct example packages matrix
+    runs-on: ubuntu-latest
+    outputs:
+      example-packages-matrix: '${{ steps.generate-matrix.outputs.example-packages-matrix }}'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: generate-matrix
+        run: echo "example-packages-matrix=$(curl -s https://raw.githubusercontent.com/apple/swift-nio/main/scripts/generate_matrix.sh | bash)" >> "$GITHUB_OUTPUT"
+        env:
+          MATRIX_LINUX_SETUP_COMMAND: git config --global --add safe.directory /swift-openapi-generator
+          MATRIX_LINUX_COMMAND: ./scripts/test-examples.sh
+          MATRIX_LINUX_NIGHTLY_MAIN_ENABLED: false
+
+  example-packages:
+    name: Example packages
+    needs: construct-example-packages-matrix
+    uses: apple/swift-nio/.github/workflows/swift_test_matrix.yml@main
+    with:
+      name: "Example packages"
+      matrix_string: '${{ needs.construct-example-packages-matrix.outputs.example-packages-matrix }}'
+
+
+  macos-tests:
+    name: macOS tests
+    uses: apple/swift-nio/.github/workflows/macos_tests.yml@main
+    with:
+      runner_pool: general
+      build_scheme: swift-openapi-generator-Package
+      ios_xcode_build_enabled: false
+      watchos_xcode_build_enabled: false
+      tvos_xcode_build_enabled: false
+      visionos_xcode_build_enabled: false
+
+  release-builds:
+    name: Release builds
+    uses: apple/swift-nio/.github/workflows/release_builds.yml@main
+    with:
+      windows_6_1_enabled: true
+      windows_6_2_enabled: true
+      windows_6_3_enabled: true
+      windows_nightly_next_enabled: true
+      windows_nightly_main_enabled: true

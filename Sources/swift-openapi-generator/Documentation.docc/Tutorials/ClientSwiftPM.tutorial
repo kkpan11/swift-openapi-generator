@@ -1,5 +1,5 @@
 @Tutorial(time: 20) {
-    @XcodeRequirement(title: "Swift 5.9 ", destination: "https://developer.apple.com/download/applications/")
+    @XcodeRequirement(title: "Swift 6.0 ", destination: "https://developer.apple.com/download/applications/")
 
     @Intro(title: "Generating a client in a Swift package") {
         This tutorial guides you through building _GreetingServiceClient_—an API client for a fictitious service that returns a personalized greeting.
@@ -122,7 +122,7 @@
             @Step {
                 Next we'll create an instance of our client.
 
-                Note: `Servers.server2()` is the localhost service, defined in the OpenAPI document.
+                Note: `Servers.Server2.url()` is the localhost service, defined in the OpenAPI document.
                 @Code(name: "main.swift", file: client.main.2.swift)
             }
             @Step {

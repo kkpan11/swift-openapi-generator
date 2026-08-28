@@ -116,6 +116,76 @@ final class Test_TextBasedRenderer: XCTestCase {
         )
     }
 
+    func testImportsWithPublicAccessModifier() throws {
+        try _test(
+            [ImportDescription(moduleName: "Foo", accessModifier: .public)],
+            renderedBy: TextBasedRenderer.renderImports,
+            rendersAs: #"""
+                public import Foo
+                """#
+        )
+    }
+
+    func testImportsWithPackageAccessModifier() throws {
+        try _test(
+            [ImportDescription(moduleName: "Foo", accessModifier: .package)],
+            renderedBy: TextBasedRenderer.renderImports,
+            rendersAs: #"""
+                package import Foo
+                """#
+        )
+    }
+
+    func testImportsWithInternalAccessModifier() throws {
+        try _test(
+            [ImportDescription(moduleName: "Foo", accessModifier: .internal)],
+            renderedBy: TextBasedRenderer.renderImports,
+            rendersAs: #"""
+                import Foo
+                """#
+        )
+    }
+
+    func testImportsWithAccessModifierAndAttributes() throws {
+        try _test(
+            [ImportDescription(moduleName: "Foo", spi: "Secret", accessModifier: .public, preconcurrency: .always)],
+            renderedBy: TextBasedRenderer.renderImports,
+            rendersAs: #"""
+                @preconcurrency @_spi(Secret) public import Foo
+                """#
+        )
+    }
+
+    func testImportsWithAccessModifierAndModuleTypes() throws {
+        try _test(
+            [
+                ImportDescription(
+                    moduleName: "Foundation",
+                    moduleTypes: ["struct Foundation.URL"],
+                    accessModifier: .public
+                )
+            ],
+            renderedBy: TextBasedRenderer.renderImports,
+            rendersAs: #"""
+                public import struct Foundation.URL
+                """#
+        )
+    }
+
+    func testImportsWithAccessModifierAndPreconcurrencyOnOS() throws {
+        try _test(
+            [ImportDescription(moduleName: "Foo", accessModifier: .public, preconcurrency: .onOS(["Linux"]))],
+            renderedBy: TextBasedRenderer.renderImports,
+            rendersAs: #"""
+                #if os(Linux)
+                @preconcurrency public import Foo
+                #else
+                public import Foo
+                #endif
+                """#
+        )
+    }
+
     func testAccessModifiers() throws {
         try _test(
             .public,
@@ -194,6 +264,44 @@ final class Test_TextBasedRenderer: XCTestCase {
                     nil
                 ]
                 """#
+        )
+    }
+
+    // MARK: - Extended string delimiter edge cases
+
+    func testStringLiteral_contentContainsQuoteHash() throws {
+        // When the string contains `"#`, a single-hash raw literal `#"..."#`
+        // would be terminated early. The renderer must use `##"..."##`.
+        try _test(
+            .string(##"foo"# + unexpected + #""##),
+            renderedBy: TextBasedRenderer.renderLiteral,
+            rendersAs: ##"""
+                ##"foo"# + unexpected + #""##
+                """##
+        )
+    }
+
+    func testStringLiteral_contentContainsBackslashHash() throws {
+        // When the string contains `\#(`, a single-hash raw literal would
+        // treat it as string interpolation. The renderer must use `##"..."##`.
+        try _test(
+            .string(##"hello\#(unexpected)world"##),
+            renderedBy: TextBasedRenderer.renderLiteral,
+            rendersAs: ##"""
+                ##"hello\#(unexpected)world"##
+                """##
+        )
+    }
+
+    func testStringLiteral_multipleHashesNeeded() throws {
+        // When the string contains both `"#` and `"##`, the renderer must
+        // use three hashes.
+        try _test(
+            .string(###"a"# b"## c"###),
+            renderedBy: TextBasedRenderer.renderLiteral,
+            rendersAs: ###"""
+                ###"a"# b"## c"###
+                """###
         )
     }
 
@@ -755,7 +863,7 @@ extension Test_TextBasedRenderer {
         _ input: Input,
         renderedBy renderClosure: (TextBasedRenderer) -> ((Input) -> String),
         rendersAs output: String,
-        file: StaticString = #file,
+        file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
         let renderer = TextBasedRenderer.default

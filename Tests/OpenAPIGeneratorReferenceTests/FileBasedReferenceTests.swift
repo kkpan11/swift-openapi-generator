@@ -21,17 +21,26 @@ struct TestConfig: Encodable {
     var mode: GeneratorMode
     var additionalImports: [String]?
     var featureFlags: FeatureFlags?
+    var namingStrategy: NamingStrategy
+    var nameOverrides: [String: String]
     var referenceOutputDirectory: String
 }
 
 extension TestConfig {
     var asConfig: Config {
-        .init(mode: mode, access: .public, additionalImports: additionalImports ?? [], featureFlags: featureFlags ?? [])
+        .init(
+            mode: mode,
+            access: .public,
+            additionalImports: additionalImports ?? [],
+            namingStrategy: namingStrategy,
+            nameOverrides: nameOverrides,
+            featureFlags: featureFlags ?? []
+        )
     }
 }
 
 /// Tests that the generator produces Swift files that match a reference.
-class FileBasedReferenceTests: XCTestCase {
+final class FileBasedReferenceTests: XCTestCase {
 
     /// Setup method called before the invocation of each test method in the class.
     override func setUp() {
@@ -77,24 +86,33 @@ class FileBasedReferenceTests: XCTestCase {
             config: referenceTest.asConfig,
             ignoredDiagnosticMessages: ignoredDiagnosticMessages
         )
-        let generatedOutputSource = try generatorPipeline.run(input)
+        let generatedOutputSources = try generatorPipeline.run(input)
+        XCTAssertFalse(generatedOutputSources.isEmpty)
 
         // Write generated sources to temporary directory
         let generatedOutputDir = try self.temporaryDirectory()
-        let generatedOutputFile = URL(fileURLWithPath: generatedOutputSource.baseName, relativeTo: generatedOutputDir)
-        try generatedOutputSource.contents.write(to: generatedOutputFile)
+        for generatedOutputSource in generatedOutputSources {
+            let generatedOutputFile = URL(
+                fileURLWithPath: generatedOutputSource.baseName,
+                relativeTo: generatedOutputDir
+            )
+            try generatedOutputSource.contents.write(to: generatedOutputFile)
+        }
 
         // Compare the generated directory with the reference directory
         let referenceOutputDir = URL(
             fileURLWithPath: referenceTest.referenceOutputDirectory,
             relativeTo: referenceTestResourcesDirectory
         )
-        let referenceOutputFile = referenceOutputDir.appendingPathComponent(generatedOutputSource.baseName)
-        self.assert(
-            contentsOf: generatedOutputFile,
-            equalsContentsOf: referenceOutputFile,
-            runDiffWhenContentsDiffer: true
-        )
+        for generatedOutputSource in generatedOutputSources {
+            let generatedOutputFile = generatedOutputDir.appendingPathComponent(generatedOutputSource.baseName)
+            let referenceOutputFile = referenceOutputDir.appendingPathComponent(generatedOutputSource.baseName)
+            self.assert(
+                contentsOf: generatedOutputFile,
+                equalsContentsOf: referenceOutputFile,
+                runDiffWhenContentsDiffer: true
+            )
+        }
     }
 
     enum ReferenceProjectName: String, Hashable, CaseIterable {
@@ -127,6 +145,8 @@ class FileBasedReferenceTests: XCTestCase {
                     mode: mode,
                     additionalImports: [],
                     featureFlags: featureFlags,
+                    namingStrategy: .idiomatic,
+                    nameOverrides: [:],
                     referenceOutputDirectory: "ReferenceSources/\(project.fixtureCodeDirectoryName)"
                 ),
                 ignoredDiagnosticMessages: ignoredDiagnosticMessages
@@ -140,12 +160,10 @@ extension FileBasedReferenceTests {
     {
         let parser = YamsParser()
         let translator = MultiplexTranslator()
-        let renderer = TextBasedRenderer.default
-
         return _OpenAPIGeneratorCore.makeGeneratorPipeline(
             parser: parser,
             translator: translator,
-            renderer: renderer,
+            makeRenderer: { TextBasedRenderer.default },
             config: config,
             diagnostics: XCTestDiagnosticCollector(test: self, ignoredDiagnosticMessages: ignoredDiagnosticMessages)
         )
@@ -179,6 +197,24 @@ extension FileBasedReferenceTests {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
+        // Normalize newlines
+        #if os(Windows)
+        let hasCarriageReturns = String(
+            decoding: FileManager.default.contents(atPath: referenceFile.path) ?? Data(),
+            as: UTF8.self
+        )
+        .contains("\r\n")
+        XCTAssertNoThrow(
+            try Data(
+                (String(decoding: FileManager.default.contents(atPath: generatedFile.path) ?? Data(), as: UTF8.self)
+                    .split(omittingEmptySubsequences: false, whereSeparator: { $0 == "\r" || $0 == "\n" })
+                    .joined(separator: hasCarriageReturns ? "\r\n" : "\n"))
+                    .utf8
+            )
+            .write(to: URL(fileURLWithPath: generatedFile.path))
+        )
+        #endif
+
         if FileManager.default.contentsEqual(atPath: generatedFile.path, andPath: referenceFile.path) { return }
 
         let diffOutput: String?
@@ -208,10 +244,10 @@ extension FileBasedReferenceTests {
 
     private func runDiff(reference: URL, actual: URL) throws -> String {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.executableURL = try resolveExecutable("git")
         process.currentDirectoryURL = self.referenceTestResourcesDirectory
         process.arguments = [
-            "git", "diff", "--no-index", "-U5",
+            "diff", "--no-index", "-U5",
             // The following arguments are useful for development.
             //            "--ignore-space-change",
             //            "--ignore-all-space",

@@ -168,6 +168,12 @@ For any other formats, the payload is provided as raw bytes (using the `HTTPBody
 - [x] additionalProperties
 - [x] description
 - [x] format
+    - `date-time` maps to `Foundation.Date`
+    - `int32` maps to `Swift.Int32`
+    - `int64` maps to `Swift.Int64`
+    - `float` maps to `Swift.Float`
+    - `double` maps to `Swift.Double`
+    - Other format values don't change the generated Swift type
 - [ ] default
 - [x] nullable (only in 3.0, removed in 3.1, add `null` in `types` instead)
 - [x] discriminator
@@ -212,8 +218,8 @@ For any other formats, the payload is provided as raw bytes (using the `HTTPBody
 - [x] required
 - [x] deprecated
 - [ ] allowEmptyValue
-- [x] style (only defaults)
-- [x] explode (non default only for query items)
+- [x] style
+- [x] explode
 - [ ] allowReserved
 - [x] schema
 - [ ] example
@@ -230,7 +236,7 @@ For any other formats, the payload is provided as raw bytes (using the `HTTPBody
 - [x] simple (in header)
 - [ ] spaceDelimited (in query)
 - [ ] pipeDelimited (in query)
-- [ ] deepObject (in query)
+- [x] deepObject (in query)
 
 #### Supported combinations
 
@@ -239,6 +245,7 @@ For any other formats, the payload is provided as raw bytes (using the `HTTPBody
 | path | `simple` | `false` |
 | query | `form` | `true` |
 | query | `form` | `false` |
+| query | `deepObject` | `true` |
 | header | `simple` | `false` |
 
 #### Reference Object

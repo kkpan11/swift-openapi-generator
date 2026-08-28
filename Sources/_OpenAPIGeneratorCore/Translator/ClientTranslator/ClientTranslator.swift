@@ -32,13 +32,11 @@ struct ClientFileTranslator: FileTranslator {
 
         let doc = parsedOpenAPI
 
-        let topComment: Comment = .inline(Constants.File.topComment)
+        let topComment = self.topComment
 
-        let imports =
-            Constants.File.clientServerImports + config.additionalImports.map { ImportDescription(moduleName: $0) }
+        let imports = importDescriptions(adding: Constants.File.clientServerImports)
 
-        let clientMethodDecls =
-            try OperationDescription.all(from: doc.paths, in: components, asSwiftSafeName: swiftSafeName)
+        let clientMethodDecls = try OperationDescription.all(from: doc.paths, in: components, context: context)
             .map(translateClientMethod(_:))
 
         let clientStructPropertyDecl: Declaration = .commentable(
@@ -118,11 +116,11 @@ struct ClientFileTranslator: FileTranslator {
             )
         )
 
-        return StructuredSwiftRepresentation(
-            file: .init(
-                name: GeneratorMode.client.outputFileName,
+        return StructuredSwiftRepresentation(files: [
+            .init(
+                name: GeneratorMode.client.outputFileName.rawValue,
                 contents: .init(topComment: topComment, imports: imports, codeBlocks: [.declaration(clientStructDecl)])
             )
-        )
+        ])
     }
 }

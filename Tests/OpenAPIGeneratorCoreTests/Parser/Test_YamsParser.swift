@@ -21,14 +21,18 @@ final class Test_YamsParser: Test_Core {
         XCTAssertNoThrow(try _test(openAPIVersionString: "3.0.1"))
         XCTAssertNoThrow(try _test(openAPIVersionString: "3.0.2"))
         XCTAssertNoThrow(try _test(openAPIVersionString: "3.0.3"))
+        XCTAssertNoThrow(try _test(openAPIVersionString: "3.0.4"))
         XCTAssertNoThrow(try _test(openAPIVersionString: "3.1.0"))
+        XCTAssertNoThrow(try _test(openAPIVersionString: "3.1.1"))
+        XCTAssertNoThrow(try _test(openAPIVersionString: "3.1.2"))
+        XCTAssertNoThrow(try _test(openAPIVersionString: "3.2.0"))
 
         let expected1 =
-            "/foo.yaml: error: Unsupported document version: openapi: 3.2.0. Please provide a document with OpenAPI versions in the 3.0.x or 3.1.x sets."
-        assertThrownError(try _test(openAPIVersionString: "3.2.0"), expectedDiagnostic: expected1)
+            "/foo.yaml: error: Unsupported document version: openapi: 3.3.0. Please provide a document with OpenAPI versions in the 3.0.x, 3.1.x, or 3.2.x sets."
+        assertThrownError(try _test(openAPIVersionString: "3.3.0"), expectedDiagnostic: expected1)
 
         let expected2 =
-            "/foo.yaml: error: Unsupported document version: openapi: 2.0. Please provide a document with OpenAPI versions in the 3.0.x or 3.1.x sets."
+            "/foo.yaml: error: Unsupported document version: openapi: 2.0. Please provide a document with OpenAPI versions in the 3.0.x, 3.1.x, or 3.2.x sets."
         assertThrownError(try _test(openAPIVersionString: "2.0"), expectedDiagnostic: expected2)
     }
 
@@ -54,7 +58,7 @@ final class Test_YamsParser: Test_Core {
             """
 
         let expected =
-            "/foo.yaml: error: No openapi key found, please provide a valid OpenAPI document with OpenAPI versions in the 3.0.x or 3.1.x sets."
+            "/foo.yaml: error: No key named openapi found. Please provide a valid OpenAPI document with OpenAPI versions in the 3.0.x, 3.1.x, or 3.2.x sets."
         assertThrownError(try _test(yaml), expectedDiagnostic: expected)
     }
 
@@ -122,7 +126,7 @@ final class Test_YamsParser: Test_Core {
             /foo.yaml: error: Found neither a $ref nor a PathItem in Document.paths['/system']. 
 
             PathItem could not be decoded because:
-            Inconsistency encountered when parsing `Vendor Extension` for the **GET** endpoint under `/system`: Found at least one vendor extension property that does not begin with the required 'x-' prefix. Invalid properties: [ resonance ]..
+            Problem encountered when parsing `Vendor Extension` for the **GET** endpoint under `/system`: Found at least one vendor extension property that does not begin with the required 'x-' prefix. Invalid properties: [ resonance ]..
             """
         assertThrownError(try _test(yaml), expectedDiagnostic: expected)
     }
@@ -163,7 +167,11 @@ final class Test_YamsParser: Test_Core {
         try YamsParser()
             .parseOpenAPI(
                 .init(absolutePath: URL(fileURLWithPath: "/foo.yaml"), contents: Data(yaml.utf8)),
-                config: .init(mode: .types, access: Config.defaultAccessModifier),
+                config: .init(
+                    mode: .types,
+                    access: Config.defaultAccessModifier,
+                    namingStrategy: Config.defaultNamingStrategy
+                ),
                 diagnostics: PrintingDiagnosticCollector()
             )
     }
@@ -171,7 +179,7 @@ final class Test_YamsParser: Test_Core {
     private func assertThrownError(
         _ closure: @autoclosure () throws -> ParsedOpenAPIRepresentation,
         expectedDiagnostic: String,
-        file: StaticString = #file,
+        file: StaticString = #filePath,
         line: UInt = #line
     ) {
         XCTAssertThrowsError(try closure(), file: file, line: line) { error in

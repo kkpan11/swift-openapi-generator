@@ -12,6 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 import PackagePlugin
+#if canImport(FoundationEssentials)
+import struct FoundationEssentials.URL
+#else
+import struct Foundation.URL
+#endif
 
 enum PluginUtils {
     private static var supportedConfigFiles: Set<String> {
@@ -21,26 +26,27 @@ enum PluginUtils {
 
     /// Validated values to run a plugin with.
     struct ValidatedInputs {
-        let doc: Path
-        let config: Path
-        let genSourcesDir: Path
+        let doc: URL
+        let config: URL
+        let genSourcesDir: URL
         let arguments: [String]
         let tool: PluginContext.Tool
     }
 
     /// Validates the inputs and returns the necessary values to run a plugin.
     static func validateInputs(
-        workingDirectory: Path,
+        workingDirectory: URL,
         tool: (String) throws -> PluginContext.Tool,
         sourceFiles: FileList,
         targetName: String,
         pluginSource: PluginSource
     ) throws -> ValidatedInputs {
         let (config, doc) = try findFiles(inputFiles: sourceFiles, targetName: targetName)
-        let genSourcesDir = workingDirectory.appending("GeneratedSources")
+        let genSourcesDir = workingDirectory.appending(component: "GeneratedSources")
 
         let arguments = [
-            "generate", "\(doc)", "--config", "\(config)", "--output-directory", "\(genSourcesDir)", "--plugin-source",
+            "generate", doc.path(percentEncoded: false), "--config", config.path(percentEncoded: false),
+            "--output-directory", genSourcesDir.path(percentEncoded: false), "--plugin-source",
             "\(pluginSource.rawValue)",
         ]
 
@@ -51,7 +57,7 @@ enum PluginUtils {
 
     /// Finds the OpenAPI config and document files or throws an error including both possible
     /// previous errors from the process of finding the config and document files.
-    private static func findFiles(inputFiles: FileList, targetName: String) throws -> (config: Path, doc: Path) {
+    private static func findFiles(inputFiles: FileList, targetName: String) throws -> (config: URL, doc: URL) {
         let config = findConfig(inputFiles: inputFiles, targetName: targetName)
         let doc = findDocument(inputFiles: inputFiles, targetName: targetName)
         switch (config, doc) {
@@ -63,8 +69,8 @@ enum PluginUtils {
     }
 
     /// Find the config file.
-    private static func findConfig(inputFiles: FileList, targetName: String) -> Result<Path, FileError> {
-        let matchedConfigs = inputFiles.filter { supportedConfigFiles.contains($0.path.lastComponent) }.map(\.path)
+    private static func findConfig(inputFiles: FileList, targetName: String) -> Result<URL, FileError> {
+        let matchedConfigs = inputFiles.map(\.url).filter { supportedConfigFiles.contains($0.lastPathComponent) }
         guard matchedConfigs.count > 0 else {
             return .failure(FileError(targetName: targetName, fileKind: .config, issue: .noFilesFound))
         }
@@ -77,8 +83,8 @@ enum PluginUtils {
     }
 
     /// Find the document file.
-    private static func findDocument(inputFiles: FileList, targetName: String) -> Result<Path, FileError> {
-        let matchedDocs = inputFiles.filter { supportedDocFiles.contains($0.path.lastComponent) }.map(\.path)
+    private static func findDocument(inputFiles: FileList, targetName: String) -> Result<URL, FileError> {
+        let matchedDocs = inputFiles.map(\.url).filter { supportedDocFiles.contains($0.lastPathComponent) }
         guard matchedDocs.count > 0 else {
             return .failure(FileError(targetName: targetName, fileKind: .document, issue: .noFilesFound))
         }

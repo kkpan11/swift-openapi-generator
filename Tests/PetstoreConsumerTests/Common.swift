@@ -14,8 +14,8 @@
 import XCTest
 import HTTPTypes
 
-extension Operations.listPets.Output {
-    static var success: Self { .ok(.init(headers: .init(My_hyphen_Response_hyphen_UUID: "abcd"), body: .json([]))) }
+extension Operations.ListPets.Output {
+    static var success: Self { .ok(.init(headers: .init(myResponseUUID: "abcd"), body: .json([]))) }
 }
 
 extension HTTPRequest {
@@ -25,7 +25,7 @@ extension HTTPRequest {
     ///   - path: The path of the HTTP request.
     ///   - method: The HTTP method (e.g., GET, POST, PUT, DELETE, etc.).
     ///   - headerFields: HTTP header fields to include in the request.
-    public init(soar_path path: String, method: Method, headerFields: HTTPFields = .init()) {
+    init(soar_path path: String, method: Method, headerFields: HTTPFields = .init()) {
         self.init(method: method, scheme: nil, authority: nil, path: path, headerFields: headerFields)
     }
 }

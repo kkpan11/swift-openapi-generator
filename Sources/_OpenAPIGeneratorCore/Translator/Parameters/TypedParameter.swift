@@ -34,9 +34,8 @@ struct TypedParameter {
     /// The coding strategy appropriate for this parameter.
     var codingStrategy: CodingStrategy
 
-    /// A converted function from user-provided strings to strings
-    /// safe to be used as a Swift identifier.
-    var asSwiftSafeName: (String) -> String
+    /// A set of configuration values that inform translation.
+    var context: TranslatorContext
 }
 
 extension TypedParameter: CustomStringConvertible {
@@ -49,7 +48,7 @@ extension TypedParameter {
     var name: String { parameter.name }
 
     /// The name of the parameter sanitized to be a valid Swift identifier.
-    var variableName: String { asSwiftSafeName(name) }
+    var variableName: String { context.safeNameGenerator.swiftMemberName(for: name) }
 
     /// A Boolean value that indicates whether the parameter must be specified
     /// when performing the OpenAPI operation.
@@ -61,19 +60,11 @@ extension TypedParameter {
     /// A schema to be inlined.
     ///
     /// - Returns: Nil when schema is referenceable.
-    var inlineableSchema: JSONSchema? { schema.inlineableSchema }
-}
-
-extension UnresolvedSchema {
-
-    /// A schema to be inlined.
-    ///
-    /// - Returns: Nil when schema is referenceable.
     var inlineableSchema: JSONSchema? {
-        switch self {
+        switch schema {
         case .a: return nil
         case let .b(schema):
-            if TypeMatcher.isInlinable(schema) { return schema }
+            if TypeMatcher(context: context).isInlinable(schema) { return schema }
             return nil
         }
     }
@@ -108,7 +99,7 @@ extension FileTranslator {
         // Collect the parameter
         let parameter: OpenAPI.Parameter
         switch unresolvedParameter {
-        case let .a(ref): parameter = try components.lookup(ref)
+        case let .a(ref): parameter = try components.assumeLookupOnce(ref)
         case let .b(_parameter): parameter = _parameter
         }
 
@@ -139,8 +130,11 @@ extension FileTranslator {
             let location = parameter.location
             switch location {
             case .query:
-                guard case .form = style else {
-                    diagnostics.emitUnsupported(
+                switch style {
+                case .form: break
+                case .deepObject where explode: break
+                default:
+                    try diagnostics.emitUnsupported(
                         "Query params of style \(style.rawValue), explode: \(explode)",
                         foundIn: foundIn
                     )
@@ -148,14 +142,17 @@ extension FileTranslator {
                 }
             case .header, .path:
                 guard case .simple = style else {
-                    diagnostics.emitUnsupported(
+                    try diagnostics.emitUnsupported(
                         "\(location.rawValue) params of style \(style.rawValue), explode: \(explode)",
                         foundIn: foundIn
                     )
                     return nil
                 }
             case .cookie:
-                diagnostics.emitUnsupported("Cookie params", foundIn: foundIn)
+                try diagnostics.emitUnsupported("Cookie params", foundIn: foundIn)
+                return nil
+            case .querystring:
+                try diagnostics.emitUnsupported("QueryString params", foundIn: foundIn)
                 return nil
             }
 
@@ -171,14 +168,11 @@ extension FileTranslator {
             codingStrategy = typedContent.content.contentType.codingStrategy
 
             // Defaults are defined by the OpenAPI specification:
-            // https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.0.3.md#fixed-fields-10
-            switch parameter.location {
-            case .query, .cookie:
-                style = .form
-                explode = true
-            case .path, .header:
-                style = .simple
-                explode = false
+            // https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.2.0.md#fixed-fields-10
+            style = OpenAPI.Parameter.SchemaContext.Style.default(for: parameter.location)
+            switch style {
+            case .form: explode = true
+            default: explode = false
             }
         }
 
@@ -208,7 +202,7 @@ extension FileTranslator {
             explode: explode,
             typeUsage: usage,
             codingStrategy: codingStrategy,
-            asSwiftSafeName: swiftSafeName
+            context: context
         )
     }
 }
@@ -227,6 +221,7 @@ extension OpenAPI.Parameter.Context.Location {
         case .header: return "Headers"
         case .query: return "Query"
         case .cookie: return "Cookies"
+        case .querystring: return "QueryString"
         }
     }
 
@@ -242,6 +237,7 @@ extension OpenAPI.Parameter.Context.Location {
         case .header: return "headers"
         case .query: return "query"
         case .cookie: return "cookies"
+        case .querystring: return "querystring"
         }
     }
 }
@@ -252,6 +248,7 @@ extension OpenAPI.Parameter.SchemaContext.Style {
     var runtimeName: String {
         switch self {
         case .form: return Constants.Components.Parameters.Style.form
+        case .deepObject: return Constants.Components.Parameters.Style.deepObject
         default: preconditionFailure("Unsupported style")
         }
     }

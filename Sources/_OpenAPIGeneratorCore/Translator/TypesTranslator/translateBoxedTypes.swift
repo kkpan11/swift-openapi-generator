@@ -25,7 +25,7 @@ extension TypesFileTranslator {
     func boxRecursiveTypes(_ decls: [Declaration]) throws -> [Declaration] {
 
         let nodes = decls.compactMap(DeclarationRecursionDetector.Node.init)
-        let nodeLookup = Dictionary(uniqueKeysWithValues: nodes.map { ($0.name, $0) })
+        let nodeLookup = Dictionary(nodes.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         let container = DeclarationRecursionDetector.Container(lookupMap: nodeLookup)
 
         let boxedNames = try RecursionDetector.computeBoxedTypes(rootNodes: nodes, container: container)
@@ -33,7 +33,7 @@ extension TypesFileTranslator {
         var decls = decls
         for (index, decl) in decls.enumerated() {
             guard let name = decl.name, boxedNames.contains(name) else { continue }
-            diagnostics.emit(
+            try diagnostics.emit(
                 .note(
                     message: "Detected a recursive type; it will be boxed to break the reference cycle.",
                     context: ["name": name]
@@ -107,10 +107,8 @@ extension TypesFileTranslator {
                 case .variable(var variableDescription) = commented
             else { return member }
             let name = TextBasedRenderer.renderedExpressionAsString(variableDescription.left)
-            variableDescription.getter = [.expression(.identifierPattern("storage").dot("value").dot(name))]
-            variableDescription.modify = [
-                .expression(.yield(.inOut(.identifierPattern("storage").dot("value").dot(name))))
-            ]
+            variableDescription.getter = [.expression(.selfDot("storage").dot("value").dot(name))]
+            variableDescription.modify = [.expression(.yield(.inOut(.selfDot("storage").dot("value").dot(name))))]
             return .commentable(comment, .variable(variableDescription))
         }
 
@@ -127,7 +125,7 @@ extension TypesFileTranslator {
             funcDesc.body = [
                 .expression(
                     .assignment(
-                        left: .identifierPattern("storage"),
+                        left: .selfDot("storage"),
                         right: .dot("init")
                             .call([
                                 .init(
@@ -162,12 +160,12 @@ extension TypesFileTranslator {
             .function(
                 accessModifier: desc.accessModifier,
                 kind: .initializer(failable: false),
-                parameters: [.init(label: "from", name: "decoder", type: .any(.member("Decoder")))],
+                parameters: [.init(label: "from", name: "decoder", type: .any(.member(["Swift", "Decoder"])))],
                 keywords: [.throws],
                 body: [
                     .expression(
                         .assignment(
-                            left: .identifierPattern("storage"),
+                            left: .selfDot("storage"),
                             right: .try(
                                 .dot("init").call([.init(label: "from", expression: .identifierPattern("decoder"))])
                             )
@@ -180,12 +178,12 @@ extension TypesFileTranslator {
             .function(
                 accessModifier: desc.accessModifier,
                 kind: .function(name: "encode"),
-                parameters: [.init(label: "to", name: "encoder", type: .any(.member("Encoder")))],
+                parameters: [.init(label: "to", name: "encoder", type: .any(.member(["Swift", "Encoder"])))],
                 keywords: [.throws],
                 body: [
                     .expression(
                         .try(
-                            .identifierPattern("storage").dot("encode")
+                            .selfDot("storage").dot("encode")
                                 .call([.init(label: "to", expression: .identifierPattern("encoder"))])
                         )
                     )

@@ -16,7 +16,7 @@ import Foundation
 import _OpenAPIGeneratorCore
 
 struct _GenerateCommand: AsyncParsableCommand {
-    static var configuration: CommandConfiguration = .init(
+    static let configuration: CommandConfiguration = .init(
         commandName: "generate",
         abstract: "Generate Swift files from an OpenAPI document",
         discussion: """
@@ -37,7 +37,7 @@ struct _GenerateCommand: AsyncParsableCommand {
 
     @Option(
         help:
-            "Output directory where the generated files are written. Warning: Replaces any existing files with the same filename. Reserved filenames: \(GeneratorMode.allOutputFileNames.joined(separator: ", "))"
+            "Output directory where the generated files are written. Warning: Replaces any existing files with the same filename. Reserved filenames: \(OutputFileName.allCases.map(\.rawValue).joined(separator: ", "))"
     ) var outputDirectory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 
     @Option(

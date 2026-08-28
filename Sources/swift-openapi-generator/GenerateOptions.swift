@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import ArgumentParser
+public import ArgumentParser
 import Foundation
 import Yams
 import OpenAPIKit
@@ -33,7 +33,14 @@ struct _GenerateOptions: ParsableArguments {
             "The access modifier to use for the API of generated code. Default: \(Config.defaultAccessModifier.rawValue)"
     ) var accessModifier: AccessModifier?
 
+    @Option(
+        help:
+            "The strategy for converting OpenAPI names into Swift names. Default: \(Config.defaultNamingStrategy.rawValue)"
+    ) var namingStrategy: NamingStrategy?
+
     @Option(help: "Additional import to add to all generated files.") var additionalImport: [String] = []
+
+    @Option(help: "Additional file comment to add to all generated files.") var additionalFileComment: [String] = []
 
     @Option(help: "Pre-release feature to enable. Options: \(FeatureFlag.prettyListing).") var featureFlag:
         [FeatureFlag] = []
@@ -44,16 +51,37 @@ struct _GenerateOptions: ParsableArguments {
 }
 
 extension AccessModifier: ExpressibleByArgument {}
+extension NamingStrategy: ExpressibleByArgument {}
+
+/// Executes a throwing operation and transforms file-not-found errors into user-friendly messages.
+///
+/// - Parameters:
+///   - url: The file URL that the operation is attempting to access.
+///   - fileDescription: A description of the file type (e.g., "Configuration file", "OpenAPI document").
+///   - operation: The throwing operation to execute.
+/// - Returns: The result of the operation.
+/// - Throws: A `ValidationError` with a user-friendly message if the file is not found, or the original error wrapped in a `ValidationError` for other errors.
+func handleFileOperation<T>(at url: URL, fileDescription: String = "Configuration file", operation: () throws -> T)
+    throws -> T
+{
+    do { return try operation() } catch {
+        // Check if this is a file not found error
+        // On Linux, this is typically NSPOSIXErrorDomain with code 2 (ENOENT)
+        // On macOS, this can be either NSPOSIXErrorDomain code 2 or NSCocoaErrorDomain code 260
+        if let nsError = error as NSError? {
+            let isPOSIXFileNotFound = nsError.domain == NSPOSIXErrorDomain && nsError.code == 2
+            let isCocoaFileNotFound = nsError.domain == NSCocoaErrorDomain && nsError.code == 260
+            if isPOSIXFileNotFound || isCocoaFileNotFound {
+                throw ValidationError(
+                    "\(fileDescription) not found at path: \(url.path()). Please ensure the file exists and the path is correct."
+                )
+            }
+        }
+        throw ValidationError("Failed to load \(fileDescription.lowercased()) at path \(url.path()), error: \(error)")
+    }
+}
 
 extension _GenerateOptions {
-
-    /// The user-provided user config, not yet resolved with defaults.
-    var resolvedUserConfig: _UserConfig {
-        get throws {
-            let config = try loadedConfig()
-            return try .init(generate: resolvedModes(config), additionalImports: resolvedAdditionalImports(config))
-        }
-    }
 
     /// Returns a list of the generator modes requested by the user.
     /// - Parameter config: The configuration specified by the user.
@@ -68,10 +96,10 @@ extension _GenerateOptions {
     /// Returns the access modifier requested by the user.
     /// - Parameter config: The configuration specified by the user.
     /// - Returns: The access modifier requested by the user, or nil if the default should be used.
-    func resolvedAccessModifier(_ config: _UserConfig?) -> AccessModifier? {
+    func resolvedAccessModifier(_ config: _UserConfig?) -> AccessModifier {
         if let accessModifier { return accessModifier }
         if let accessModifier = config?.accessModifier { return accessModifier }
-        return nil
+        return Config.defaultAccessModifier
     }
 
     /// Returns a list of additional imports requested by the user.
@@ -81,6 +109,38 @@ extension _GenerateOptions {
         if !additionalImport.isEmpty { return additionalImport }
         if let additionalImports = config?.additionalImports, !additionalImports.isEmpty { return additionalImports }
         return []
+    }
+
+    /// Returns a list of additional file comments requested by the user.
+    /// - Parameter config: The configuration specified by the user.
+    /// - Returns: A list of additional file comments requested by the user.
+    func resolvedAdditionalFileComments(_ config: _UserConfig?) -> [String] {
+        if !additionalFileComment.isEmpty { return additionalFileComment }
+        if let additionalFileComments = config?.additionalFileComments, !additionalFileComments.isEmpty {
+            return additionalFileComments
+        }
+        return []
+    }
+
+    /// Returns the naming strategy requested by the user.
+    /// - Parameter config: The configuration specified by the user.
+    /// - Returns: The naming strategy requestd by the user.
+    func resolvedNamingStrategy(_ config: _UserConfig?) -> NamingStrategy {
+        if let namingStrategy { return namingStrategy }
+        return config?.namingStrategy ?? Config.defaultNamingStrategy
+    }
+
+    /// Returns the name overrides requested by the user.
+    /// - Parameter config: The configuration specified by the user.
+    /// - Returns: The name overrides requested by the user
+    func resolvedNameOverrides(_ config: _UserConfig?) -> [String: String] { config?.nameOverrides ?? [:] }
+
+    /// Returns the type overrides requested by the user.
+    /// - Parameter config: The configuration specified by the user.
+    /// - Returns: The type overrides requested by the user.
+    func resolvedTypeOverrides(_ config: _UserConfig?) -> TypeOverrides {
+        guard let schemaOverrides = config?.typeOverrides?.schemas, !schemaOverrides.isEmpty else { return .init() }
+        return TypeOverrides(schemas: schemaOverrides)
     }
 
     /// Returns a list of the feature flags requested by the user.
@@ -111,7 +171,7 @@ extension _GenerateOptions {
     /// - Throws: A `ValidationError` if loading or parsing the configuration file encounters an error.
     func loadedConfig() throws -> _UserConfig? {
         guard let config else { return nil }
-        do {
+        let userConfig = try handleFileOperation(at: config, fileDescription: "Configuration file") {
             let data = try Data(contentsOf: config)
             let configAsString = String(decoding: data, as: UTF8.self)
             var yamlKeys: [String] = []
@@ -121,8 +181,18 @@ extension _GenerateOptions {
             }
             try validateKeys(yamlKeys)
 
-            let config = try YAMLDecoder().decode(_UserConfig.self, from: data)
-            return config
-        } catch { throw ValidationError("Failed to load config at path \(config.path), error: \(error)") }
+            return try YAMLDecoder().decode(_UserConfig.self, from: data)
+        }
+        return userConfig
+    }
+}
+
+extension URL {
+    func path() -> String {
+        if #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) {
+            self.path(percentEncoded: false)
+        } else {
+            self.path
+        }
     }
 }

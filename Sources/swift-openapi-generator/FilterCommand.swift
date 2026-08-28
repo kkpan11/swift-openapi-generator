@@ -18,7 +18,7 @@ import Yams
 import OpenAPIKit
 
 struct _FilterCommand: AsyncParsableCommand {
-    static var configuration = CommandConfiguration(
+    static let configuration = CommandConfiguration(
         commandName: "filter",
         abstract: "Filter an OpenAPI document",
         discussion: """
@@ -40,14 +40,18 @@ struct _FilterCommand: AsyncParsableCommand {
     @Argument(help: "Path to the OpenAPI document, either in YAML or JSON.") var docPath: URL
 
     func run() async throws {
-        let configData = try Data(contentsOf: config)
-        let config = try YAMLDecoder().decode(_UserConfig.self, from: configData)
-        let documentInput = try InMemoryInputFile(absolutePath: docPath, contents: Data(contentsOf: docPath))
+        let userConfig = try handleFileOperation(at: config, fileDescription: "Configuration file") {
+            let configData = try Data(contentsOf: config)
+            return try YAMLDecoder().decode(_UserConfig.self, from: configData)
+        }
+        let documentInput = try handleFileOperation(at: docPath, fileDescription: "OpenAPI document") {
+            try InMemoryInputFile(absolutePath: docPath, contents: Data(contentsOf: docPath))
+        }
         let document = try timing(
             "Parsing document",
             YamsParser.parseOpenAPIDocument(documentInput, diagnostics: StdErrPrintingDiagnosticCollector())
         )
-        guard let documentFilter = config.filter else {
+        guard let documentFilter = userConfig.filter else {
             FileHandle.standardError.write("warning: No filter config provided\n")
             FileHandle.standardOutput.write(try encode(document, outputFormat))
             return

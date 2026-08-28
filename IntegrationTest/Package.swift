@@ -1,4 +1,4 @@
-// swift-tools-version:5.9
+// swift-tools-version:6.1
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of the SwiftOpenAPIGenerator open source project
@@ -24,13 +24,14 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-openapi-generator", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-openapi-generator", from: "1.6.0"),
+        .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.7.0"),
     ],
     targets: [
         .target(
             name: "Types",
             dependencies: [.product(name: "OpenAPIRuntime", package: "swift-openapi-runtime")],
+            path: "Sources/Types Only",
             plugins: [.plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")]
         ),
         .target(
@@ -50,6 +51,13 @@ let package = Package(
         .target(
             name: "MockTransportServer",
             dependencies: ["Server", .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime")]
+        ),
+        // Targets to integration test the command plugin
+        .target(name: "Empty"),
+        .target(name: "TypesAOT", dependencies: [.product(name: "OpenAPIRuntime", package: "swift-openapi-runtime")]),
+        .target(
+            name: "TypesAOTWithDependency",
+            dependencies: ["Empty", .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime")]
         ),
     ]
 )

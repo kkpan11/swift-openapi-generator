@@ -120,7 +120,7 @@ extension FileTranslator {
         }
         var parts: [MultipartSchemaTypedContent] = try topLevelObject.properties.compactMap {
             (key, value) -> MultipartSchemaTypedContent? in
-            let swiftSafeName = swiftSafeName(for: key)
+            let swiftSafeName = context.safeNameGenerator.swiftTypeName(for: key)
             let typeName = typeName.appending(
                 swiftComponent: swiftSafeName + Constants.Global.inlineTypeSuffix,
                 jsonComponent: key
@@ -257,7 +257,8 @@ extension FileTranslator {
             default: return .infer(.primitive)
             }
         }
-        func inferAllOfAnyOfOneOf(_ schemas: [DereferencedJSONSchema]) throws -> MultipartPartInfo.ContentTypeSource? {
+
+        func inferAllOfAnyOfOneOf(_ schemas: [JSONSchema]) throws -> MultipartPartInfo.ContentTypeSource? {
             // If all schemas are primitive, the allOf/anyOf/oneOf is also primitive.
             // These cannot be binary, so only primitive vs complex.
             for schema in schemas {
@@ -266,12 +267,13 @@ extension FileTranslator {
             }
             return .infer(.primitive)
         }
-        func inferSchema(_ schema: DereferencedJSONSchema) throws -> (
+
+        func inferSchema(_ schema: JSONSchema) throws -> (
             MultipartPartInfo.RepetitionKind, MultipartPartInfo.ContentTypeSource
         )? {
             let repetitionKind: MultipartPartInfo.RepetitionKind
             let candidateSource: MultipartPartInfo.ContentTypeSource
-            switch schema {
+            switch schema.value {
             case .null, .not: return nil
             case .boolean, .number, .integer:
                 repetitionKind = .single
@@ -289,30 +291,38 @@ extension FileTranslator {
             case .array(_, let context):
                 repetitionKind = .array
                 if let items = context.items {
-                    switch items {
+                    switch items.value {
                     case .null, .not: return nil
                     case .boolean, .number, .integer: candidateSource = .infer(.primitive)
                     case .string(_, let context): candidateSource = try inferStringContent(context)
                     case .object, .all, .one, .any, .fragment, .array: candidateSource = .infer(.complex)
+                    case .reference(let ref, _):
+                        guard let source = try inferSchema(components.assumeLookupOnce(ref))?.1 else { return nil }
+                        candidateSource = source
                     }
                 } else {
                     candidateSource = .infer(.complex)
                 }
+            case .reference(let ref, _):
+                guard let (refRepetitionKind, refCandidateSource) = try inferSchema(components.assumeLookupOnce(ref))
+                else { return nil }
+                repetitionKind = refRepetitionKind
+                candidateSource = refCandidateSource
             }
+
             return (repetitionKind, candidateSource)
         }
-        guard let (repetitionKind, candidateSource) = try inferSchema(schema.dereferenced(in: components)) else {
-            return nil
-        }
+        guard let (repetitionKind, candidateSource) = try inferSchema(schema) else { return nil }
+
         let finalContentTypeSource: MultipartPartInfo.ContentTypeSource
-        if let encoding, let contentType = encoding.contentType {
+        if let encoding, let contentType = encoding.contentTypes.first, encoding.contentTypes.count == 1 {
             finalContentTypeSource = try .explicit(contentType.asGeneratorContentType)
         } else {
             finalContentTypeSource = candidateSource
         }
         let contentType = finalContentTypeSource.contentType
         if finalContentTypeSource.contentType.isMultipart {
-            diagnostics.emitUnsupported("Multipart part cannot nest another multipart content.", foundIn: foundIn)
+            try diagnostics.emitUnsupported("Multipart part cannot nest another multipart content.", foundIn: foundIn)
             return nil
         }
         let info = MultipartPartInfo(repetition: repetitionKind, contentTypeSource: finalContentTypeSource)
@@ -354,7 +364,12 @@ extension FileTranslator {
         func visitContentMap(_ contentMap: OpenAPI.Content.Map) throws {
             for (key, value) in contentMap {
                 guard try key.asGeneratorContentType.isMultipart else { continue }
-                guard let schema = value.schema, case let .a(ref) = schema, let name = ref.name,
+                let content: OpenAPI.Content
+                switch value {
+                case .a(let ref): content = try components.assumeLookupOnce(ref)
+                case .b(let value): content = value
+                }
+                guard let ref = content.schema?.reference, let name = ref.name,
                     let componentKey = OpenAPI.ComponentKey(rawValue: name)
                 else { continue }
                 refs.insert(componentKey)
@@ -366,7 +381,7 @@ extension FileTranslator {
                 if let requestBodyEither = operation.requestBody {
                     let requestBody: OpenAPI.Request
                     switch requestBodyEither {
-                    case .a(let ref): requestBody = try components.lookup(ref)
+                    case .a(let ref): requestBody = try components.assumeLookupOnce(ref)
                     case .b(let value): requestBody = value
                     }
                     try visitContentMap(requestBody.content)
@@ -374,7 +389,7 @@ extension FileTranslator {
                 for responseOutcome in operation.responseOutcomes {
                     let response: OpenAPI.Response
                     switch responseOutcome.response {
-                    case .a(let ref): response = try components.lookup(ref)
+                    case .a(let ref): response = try components.assumeLookupOnce(ref)
                     case .b(let value): response = value
                     }
                     try visitContentMap(response.content)
@@ -384,7 +399,7 @@ extension FileTranslator {
         for (_, value) in paths {
             let pathItem: OpenAPI.PathItem
             switch value {
-            case .a(let ref): pathItem = try components.lookup(ref)
+            case .a(let ref): pathItem = try components.assumeLookupOnce(ref)
             case .b(let value): pathItem = value
             }
             try visitPath(pathItem)

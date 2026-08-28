@@ -16,7 +16,7 @@ import Foundation
 
 @main struct SwiftOpenAPIGeneratorPlugin {
     func runCommand(
-        targetWorkingDirectory: Path,
+        targetWorkingDirectory: URL,
         tool: (String) throws -> PluginContext.Tool,
         sourceFiles: FileList,
         targetName: String
@@ -29,9 +29,8 @@ import Foundation
             pluginSource: .command
         )
 
-        let toolUrl = URL(fileURLWithPath: inputs.tool.path.string)
         let process = Process()
-        process.executableURL = toolUrl
+        process.executableURL = inputs.tool.url
         process.arguments = inputs.arguments
         process.environment = [:]
         try process.run()
@@ -65,31 +64,55 @@ extension SwiftOpenAPIGeneratorPlugin: CommandPlugin {
         var hadASuccessfulRun = false
 
         for target in targets {
-            print("Considering target '\(target.name)':")
-            guard let swiftTarget = target as? SwiftSourceModuleTarget else {
-                print("- Not a swift source module. Can't generate OpenAPI code.")
+            log("Considering target '\(target.name)':")
+            guard let target = target as? SwiftSourceModuleTarget else {
+                log("- Not a swift source module. Can't generate OpenAPI code.")
                 continue
             }
             do {
-                print("- Trying OpenAPI code generation.")
+                log("- Trying OpenAPI code generation.")
                 try runCommand(
-                    targetWorkingDirectory: target.directory,
+                    targetWorkingDirectory: target.directoryURL,
                     tool: context.tool,
-                    sourceFiles: swiftTarget.sourceFiles,
+                    sourceFiles: target.sourceFiles,
                     targetName: target.name
                 )
-                print("- ✅ OpenAPI code generation for target '\(target.name)' successfully completed.")
+                log("- ✅ OpenAPI code generation for target '\(target.name)' successfully completed.")
                 hadASuccessfulRun = true
             } catch let error as PluginError {
+                if case .fileErrors(let errors) = error, Set(errors.map(\.fileKind)) == Set(FileError.Kind.allCases),
+                    errors.map(\.issue).allSatisfy({ $0 == FileError.Issue.noFilesFound })
+                {
+                    // The error is that neither of the required files are present for code generation for this target.
+                    // This should only be considered an error if this target was explicitly provided as a target for
+                    // code generation with --target.
+                    // We may get this error for other targets if:
+                    //
+                    // 1. The command plugin was run with no --target arguments, in which case the plugin loops over
+                    //    all targets; or
+                    // 2. This target is a dependency of a target that was requested using --target.
+                    //
+                    // In either of these cases, we should not consider this an error and skip the target.
+                    if !targetNameArguments.contains(target.name) {
+                        log("- Skipping because target isn't configured for OpenAPI code generation.")
+                        continue
+                    }
+                }
+
                 if error.isMisconfigurationError {
-                    print("- OpenAPI code generation failed with error.")
+                    log("- Stopping because target is misconfigured for OpenAPI code generation.")
                     throw error
                 } else {
-                    print("- Stopping because target isn't configured for OpenAPI code generation.")
+                    log("- OpenAPI code generation failed with error.")
+                    throw error
                 }
             }
         }
 
         guard hadASuccessfulRun else { throw PluginError.noTargetsWithExpectedFiles(targetNames: targets.map(\.name)) }
     }
+}
+
+private func log(_ message: @autoclosure () -> String) {
+    FileHandle.standardError.write(Data(message().appending("\n").utf8))
 }

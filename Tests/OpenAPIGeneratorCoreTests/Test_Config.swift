@@ -17,4 +17,36 @@ import OpenAPIKit
 
 final class Test_Config: Test_Core {
     func testDefaultAccessModifier() { XCTAssertEqual(Config.defaultAccessModifier, .internal) }
+    func testAdditionalFileComments() {
+        let config = Config(
+            mode: .types,
+            access: .public,
+            additionalFileComments: ["swift-format-ignore-file", "swiftlint:disable all"],
+            namingStrategy: .defensive
+        )
+        XCTAssertEqual(config.additionalFileComments, ["swift-format-ignore-file", "swiftlint:disable all"])
+    }
+    func testEmptyAdditionalFileComments() {
+        let config = Config(mode: .types, access: .public, namingStrategy: .defensive)
+        XCTAssertEqual(config.additionalFileComments, [])
+    }
+
+    func testOutputFileNameRawValues() {
+        XCTAssertEqual(OutputFileName.types.rawValue, "Types.swift")
+        XCTAssertEqual(OutputFileName.typesComponents.rawValue, "Types+Components.swift")
+        XCTAssertEqual(OutputFileName.typesOperations.rawValue, "Types+Operations.swift")
+    }
+
+    func testGeneratorModeOutputFileNames() {
+        XCTAssertEqual(
+            GeneratorMode.types.outputFileNames,
+            Set([
+                .types, .typesComponents, .typesOperations, .typesComponentsSchemas, .typesComponentsParameters,
+                .typesComponentsRequestBodies, .typesComponentsResponses, .typesComponentsHeaders,
+            ])
+        )
+        XCTAssertEqual(GeneratorMode.client.outputFileNames, [.client])
+        XCTAssertEqual(GeneratorMode.server.outputFileNames, [.server])
+        XCTAssertEqual(GeneratorMode.allOutputFileNames, Set(OutputFileName.allCases))
+    }
 }

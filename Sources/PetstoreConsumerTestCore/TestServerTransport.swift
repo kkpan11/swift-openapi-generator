@@ -11,8 +11,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import OpenAPIRuntime
-import HTTPTypes
+package import OpenAPIRuntime
+package import HTTPTypes
 
 /// A test implementation of the `ServerTransport` protocol for simulating server-side API handling.
 ///
@@ -30,53 +30,52 @@ import HTTPTypes
 ///
 /// let server = MyServer(transport: testTransport)
 /// ```
-public final class TestServerTransport: ServerTransport {
+package final class TestServerTransport: ServerTransport {
     /// Represents the input parameters for an API operation.
-    public struct OperationInputs: Equatable {
+    package struct OperationInputs: Equatable {
         /// The HTTP method of the operation.
-        public var method: HTTPRequest.Method
+        package var method: HTTPRequest.Method
         /// The path components of the operation's route.
-        public var path: String
+        package var path: String
 
         /// Initializes a new instance of `OperationInputs`.
         ///
         /// - Parameters:
         ///   - method: The HTTP method of the operation.
         ///   - path: The path components of the operation's route.
-        public init(method: HTTPRequest.Method, path: String) {
+        package init(method: HTTPRequest.Method, path: String) {
             self.method = method
             self.path = path
         }
     }
 
     /// A typealias representing a handler closure for processing server requests.
-    public typealias Handler = @Sendable (HTTPRequest, HTTPBody?, ServerRequestMetadata) async throws -> (
-        HTTPResponse, HTTPBody?
-    )
+    package typealias Handler =
+        @Sendable (HTTPRequest, HTTPBody?, ServerRequestMetadata) async throws -> (HTTPResponse, HTTPBody?)
 
     /// Represents an operation with its inputs and associated handler.
-    public struct Operation {
+    package struct Operation {
         /// The input parameters for the API operation.
-        public var inputs: OperationInputs
+        package var inputs: OperationInputs
         /// The closure representing the server operation logic.
-        public var closure: Handler
+        package var closure: Handler
 
         /// Initializes a new instance of `Operation`.
         ///
         /// - Parameters:
         ///   - inputs: The input parameters for the API operation.
         ///   - closure: The closure representing the server operation logic
-        public init(inputs: OperationInputs, closure: @escaping Handler) {
+        package init(inputs: OperationInputs, closure: @escaping Handler) {
             self.inputs = inputs
             self.closure = closure
         }
     }
 
     /// Initializes a new instance of `TestServerTransport`.
-    public init() {}
+    package init() {}
 
     /// The array of registered operations.
-    public private(set) var registered: [Operation] = []
+    package private(set) var registered: [Operation] = []
 
     /// Registers a new API operation handler with specific parameters.
     ///
@@ -85,10 +84,11 @@ public final class TestServerTransport: ServerTransport {
     ///   - method: The HTTP method of the operation.
     ///   - path: The path components of the operation.
     /// - Throws: An error if there's an issue registering the operation.
-    public func register(
-        _ handler: @Sendable @escaping (HTTPRequest, HTTPBody?, ServerRequestMetadata) async throws -> (
-            HTTPResponse, HTTPBody?
-        ),
+    package func register(
+        _ handler:
+            @Sendable @escaping (HTTPRequest, HTTPBody?, ServerRequestMetadata) async throws -> (
+                HTTPResponse, HTTPBody?
+            ),
         method: HTTPRequest.Method,
         path: String
     ) throws { registered.append(Operation(inputs: .init(method: method, path: path), closure: handler)) }
